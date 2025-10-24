@@ -1,0 +1,22 @@
+### 完整通过性测试
+POST http://localhost:8082/security/analyze
+Content-Type: application/json
+
+{
+  "contracts": [
+    {
+      "fileName": "SimpleBank.sol",
+      "code": "pragma solidity ^0.8.0;\n\n/**\n * @title SimpleBank\n * @dev 简单的银行合约示例\n */\ncontract SimpleBank {\n    // 用户余额映射\n    mapping(address => uint256) public balances;\n    \n    // 存款事件\n    event Deposit(address indexed user, uint256 amount);\n    // 取款事件\n    event Withdrawal(address indexed user, uint256 amount);\n    \n    /**\n     * @dev 存款函数\n     */\n    function deposit() public payable {\n        require(msg.value > 0, \"Deposit amount must be greater than 0\");\n        balances[msg.sender] += msg.value;\n        emit Deposit(msg.sender, msg.value);\n    }\n    \n    /**\n     * @dev 取款函数\n     * @param amount 取款金额\n     */\n    function withdraw(uint256 amount) public {\n        require(amount > 0, \"Withdrawal amount must be greater than 0\");\n        require(balances[msg.sender] >= amount, \"Insufficient balance\");\n        \n        balances[msg.sender] -= amount;\n        payable(msg.sender).transfer(amount);\n        \n        emit Withdrawal(msg.sender, amount);\n    }\n    \n    /**\n     * @dev 查询余额\n     * @param user 用户地址\n     * @return 用户余额\n     */\n    function getBalance(address user) public view returns (uint256) {\n        return balances[user];\n    }\n    \n    /**\n     * @dev 查询合约总余额\n     * @return 合约总余额\n     */\n    function getContractBalance() public view returns (uint256) {\n        return address(this).balance;\n    }\n}",
+      "isMain": true
+    }
+  ],
+  "businessContext": {
+    "projectName": "简单银行智能合约",
+    "businessType": "DeFi - 去中心化金融",
+    "businessDescription": "这是一个简单的银行智能合约，实现了基础的存取款功能。用户可以通过deposit函数存入以太坊，系统会记录每个用户的余额。用户可以随时通过withdraw函数提取自己的余额。合约使用mapping存储用户余额，并通过事件记录所有的存取款操作，便于链上追踪和审计。",
+    "expectedBehavior": "1. 用户调用deposit函数并发送ETH时，合约应该正确增加用户余额并触发Deposit事件。2. 用户调用withdraw函数时，合约应该先检查用户余额是否充足，如果充足则扣除余额并转账ETH给用户，同时触发Withdrawal事件。3. 任何人都可以通过getBalance查询指定地址的余额。4. 任何人都可以通过getContractBalance查询合约的总余额。5. 所有的存取款操作都应该有相应的事件记录。",
+    "securityRequirements": "1. 防止重入攻击：取款时应该先更新状态再转账。2. 余额检查：取款前必须检查用户余额是否充足。3. 金额验证：存款和取款金额必须大于0。4. 访问控制：用户只能提取自己的余额。5. 整数溢出保护：使用Solidity 0.8.0+的内置溢出检查。6. 事件日志：所有关键操作都应该触发事件便于监控。"
+  },
+  "analysisType": "all",
+  "aiStrategy": "qwen"
+}
