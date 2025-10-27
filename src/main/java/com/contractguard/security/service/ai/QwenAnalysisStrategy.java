@@ -18,71 +18,62 @@ import org.springframework.web.client.RestTemplate;
 import java.util.*;
 
 /**
- * AgentRouter AI分析策略
- * 免费AI聚合服务，无需邀请码
+ * 通义千问 AI分析策略 - 四维度完整版
  */
-@AIStrategy(value = AIStrategyType.AGENTROUTER, priority = 1)
+@AIStrategy(value = AIStrategyType.QWEN, priority = 3)
 @Slf4j
-public class AgentRouterAnalysisStrategy implements AIAnalysisStrategy {
+public class QwenAnalysisStrategy implements AIAnalysisStrategy {
 
-    @Value("${ai.agentrouter.api-key:}")
+    @Value("${ai.qwen.api-key:}")
     private String apiKey;
 
-    @Value("${ai.agentrouter.api-url:https://agentrouter.org/v1/chat/completions}")
-    private String apiUrl;
-
-    @Value("${ai.agentrouter.model:gpt-4}")
+    @Value("${ai.qwen.model:qwen-plus}")
     private String model;
+
+    private static final String API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /**
-     * 缓存可用性状态，避免每次都请求
-     */
     private volatile Boolean cachedAvailability = null;
     private volatile long lastCheckTime = 0;
-    private static final long CHECK_INTERVAL = 5 * 60 * 1000; // 5分钟检查一次
+    private static final long CHECK_INTERVAL = 5 * 60 * 1000;
 
     @PostConstruct
     public void init() {
-        log.info("🚀 初始化 AgentRouter 策略");
-        log.info("📍 API URL: {}", apiUrl);
+        log.info("🚀 初始化 通义千问 策略 (四维度分析版)");
         log.info("🔑 API Key: {}...", apiKey != null && apiKey.length() > 10 ?
                 apiKey.substring(0, 10) : "未配置");
         log.info("🤖 Model: {}", model);
 
-        // 启动时检查一次可用性
         boolean available = checkAvailability();
-        log.info("✅ AgentRouter 可用性: {}", available ? "可用" : "不可用");
+        log.info("✅ 通义千问 可用性: {}", available ? "可用" : "不可用");
     }
 
     @Override
     public AIAnalysisResponse analyze(AnalysisRequest request) {
         try {
-            log.info("🚀 使用AgentRouter分析 (模型: {}): {}",
-                    model, request.getBusinessContext().getProjectName());
+            log.info("🚀 使用通义千问四维度分析: {}",
+                    request.getBusinessContext().getProjectName());
 
             String prompt = buildEnhancedPrompt(request);
-            String response = callAgentRouter(prompt);
+            String response = callQwen(prompt);
 
             return parseEnhancedResponse(response);
 
         } catch (Exception e) {
-            log.error("❌ AgentRouter分析失败", e);
-            throw new RuntimeException("AgentRouter分析失败: " + e.getMessage());
+            log.error("❌ 通义千问分析失败", e);
+            throw new RuntimeException("通义千问分析失败: " + e.getMessage());
         }
     }
 
     @Override
     public boolean isAvailable() {
-        // 如果缓存有效，直接返回
         long now = System.currentTimeMillis();
         if (cachedAvailability != null && (now - lastCheckTime) < CHECK_INTERVAL) {
             return cachedAvailability;
         }
 
-        // 缓存过期或首次检查，重新检查可用性
         boolean available = checkAvailability();
         cachedAvailability = available;
         lastCheckTime = now;
@@ -90,102 +81,92 @@ public class AgentRouterAnalysisStrategy implements AIAnalysisStrategy {
         return available;
     }
 
-    /**
-     * 实际检查API是否可用
-     */
     private boolean checkAvailability() {
-        // 1. 基本配置检查
-        if (apiKey == null || apiKey.isEmpty() ) {
-            log.debug("❌ AgentRouter API Key 未配置");
+        if (apiKey == null || apiKey.isEmpty()) {
+            log.debug("❌ 通义千问 API Key 未配置");
             return false;
         }
 
-        if (apiUrl == null || apiUrl.isEmpty()) {
-            log.debug("❌ AgentRouter API URL 未配置");
-            return false;
-        }
-
-        // 2. 实际API调用测试
         try {
-            log.debug("🔍 测试 AgentRouter API 可用性: {}", apiUrl);
+            log.debug("🔍 测试 通义千问 API 可用性");
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
+            headers.set("Authorization", "Bearer " + apiKey);
 
-            // 构造最小测试请求
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("max_tokens", 5);  // 最小token数，节省成本
+            requestBody.put("model", model);
 
+            Map<String, Object> input = new HashMap<>();
             List<Map<String, String>> messages = new ArrayList<>();
             Map<String, String> message = new HashMap<>();
             message.put("role", "user");
-            message.put("content", "hi");  // 最短的测试消息
+            message.put("content", "hi");
             messages.add(message);
-            requestBody.put("messages", messages);
+            input.put("messages", messages);
+            requestBody.put("input", input);
+
+            Map<String, Object> parameters = new HashMap<>();
+            parameters.put("max_tokens", 5);
+            requestBody.put("parameters", parameters);
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<String> response = restTemplate.postForEntity(API_URL, entity, String.class);
 
-            // 设置较短的超时时间
-            restTemplate.getRequestFactory();
-
-            ResponseEntity<String> response = restTemplate.postForEntity(apiUrl, entity, String.class);
-
-            // 检查响应状态
             if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ AgentRouter API 可用 (状态码: {})", response.getStatusCode());
+                log.info("✅ 通义千问 API 可用");
                 return true;
             } else {
-                log.warn("⚠️ AgentRouter API 返回异常状态码: {}", response.getStatusCode());
+                log.warn("⚠️ 通义千问 API 返回异常状态码: {}", response.getStatusCode());
                 return false;
             }
 
         } catch (Exception e) {
-            log.warn("❌ AgentRouter API 不可用: {}", e.getMessage());
+            log.warn("❌ 通义千问 API 不可用: {}", e.getMessage());
             return false;
         }
     }
 
 
-    /**
-     * 调用AgentRouter API
-     */
-    private String callAgentRouter(String prompt) {
+    private String callQwen(String prompt) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
+            headers.set("Authorization", "Bearer " + apiKey);
 
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", model);
-            requestBody.put("temperature", 0.3);
-            requestBody.put("max_tokens", 4096);
 
+            Map<String, Object> input = new HashMap<>();
             List<Map<String, String>> messages = new ArrayList<>();
             Map<String, String> message = new HashMap<>();
             message.put("role", "user");
             message.put("content", prompt);
             messages.add(message);
-            requestBody.put("messages", messages);
+            input.put("messages", messages);
+            requestBody.put("input", input);
+
+            Map<String, Object> parameters = new HashMap<>();
+            parameters.put("result_format", "message");
+            requestBody.put("parameters", parameters);
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-            log.info("📡 调用AgentRouter API: {}", apiUrl);
-            ResponseEntity<String> response = restTemplate.postForEntity(apiUrl, entity, String.class);
+            log.info("📡 调用通义千问API");
+            ResponseEntity<String> response = restTemplate.postForEntity(API_URL, entity, String.class);
 
             JsonNode root = objectMapper.readTree(response.getBody());
-            String content = root.path("choices").get(0).path("message").path("content").asText();
+            String content = root.path("output").path("choices").get(0)
+                    .path("message").path("content").asText();
 
-            log.info("✅ AgentRouter响应成功,长度: {}", content.length());
+            log.info("✅ 通义千问响应成功,长度: {}", content.length());
             return content;
 
         } catch (Exception e) {
-            log.error("❌ AgentRouter API调用失败", e);
-            throw new RuntimeException("AgentRouter API失败: " + e.getMessage());
+            log.error("❌ 通义千问API调用失败", e);
+            throw new RuntimeException("通义千问API失败: " + e.getMessage());
         }
     }
-
-
 
     /**
      * 解析增强的四维度响应
@@ -217,5 +198,6 @@ public class AgentRouterAnalysisStrategy implements AIAnalysisStrategy {
             throw new RuntimeException("解析失败: " + e.getMessage());
         }
     }
+
 
 }
